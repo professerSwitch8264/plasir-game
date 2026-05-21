@@ -4,12 +4,21 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body { margin: 0; padding: 0; background-color: #2d2d2d; overflow: hidden; }
+        canvas {
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+    </style>
     <link rel="stylesheet" href="/style.css">
-    <title>Phaser React Template</title>
+    <title>Phaser Minecraft-Style Avatar</title>
 </head>
 
 <body>
-    <div id="root"></div>
+    <div id="game-container"></div>
     <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>

@@ -1,0 +1,198 @@
+import * as Phaser from 'phaser';
+import { Scene } from 'phaser';
+
+export class Game extends Scene {
+    constructor() {
+        super('Game');
+        this.currentMap = 'Spawn Area';
+    }
+
+    init(data) {
+        this.playerName = data.playerName || 'Player';
+        this.idleCount = data.idleCount || 1;
+        this.walkCount = data.walkCount || 1;
+        this.currentSlot = 0; // 0 to 8
+    }
+
+    create() {
+        // Setup a simple grass background map
+        this.cameras.main.setBackgroundColor('#4caf50');
+        
+        // Make world larger than screen
+        this.physics.world.setBounds(0, 0, 2000, 2000);
+        this.cameras.main.setBounds(0, 0, 2000, 2000);
+
+        // Grid lines for background reference
+        this.add.grid(1000, 1000, 2000, 2000, 64, 64, 0x000000, 0.1);
+
+        // Define Animations
+        this.anims.create({
+            key: 'idle',
+            frames: Array.from({length: this.idleCount}, (_, i) => ({ key: 'customPlayer', frame: i })),
+            frameRate: 4,
+            repeat: -1
+        });
+        
+        this.anims.create({
+            key: 'walk',
+            frames: Array.from({length: this.walkCount}, (_, i) => ({ key: 'customPlayer', frame: this.idleCount + i })),
+            frameRate: 8,
+            repeat: -1
+        });
+
+        // Player Sprite using custom texture from CharacterCreator
+        // We scale it up to exactly match 1 background block (16x16 * 4 = 64x64)
+        this.player = this.physics.add.sprite(1000, 1000, 'customPlayer').setScale(4);
+        
+        // Important: use Nearest Neighbor scaling to keep pixels crisp
+        this.player.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+        
+        this.player.setCollideWorldBounds(true);
+        this.player.anims.play('idle', true);
+
+        // Name text above player
+        this.nameText = this.add.text(0, 0, this.playerName, {
+            fontSize: '20px',
+            fill: '#ffffff',
+            backgroundColor: '#000000aa',
+            padding: { x: 4, y: 2 }
+        }).setOrigin(0.5, 1);
+
+        // Camera follow with 1, 1 lerp to rigidly lock pixels and prevent blur/jitter
+        this.cameras.main.startFollow(this.player, true, 1, 1);
+
+        // WASD Input
+        this.keys = this.input.keyboard.addKeys({
+            w: Phaser.Input.Keyboard.KeyCodes.W,
+            a: Phaser.Input.Keyboard.KeyCodes.A,
+            s: Phaser.Input.Keyboard.KeyCodes.S,
+            d: Phaser.Input.Keyboard.KeyCodes.D
+        });
+        
+        // Number keys for Hotbar
+        this.input.keyboard.on('keydown', (event) => {
+            if (event.key >= '1' && event.key <= '9') {
+                this.currentSlot = parseInt(event.key) - 1;
+                this.drawHotbar();
+            }
+        });
+
+        // Mouse wheel for Hotbar
+        this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
+            if (deltaY > 0) {
+                this.currentSlot = (this.currentSlot + 1) % 9;
+            } else if (deltaY < 0) {
+                this.currentSlot = (this.currentSlot - 1 + 9) % 9;
+            }
+            this.drawHotbar();
+        });
+
+        // Use postupdate event to sync text perfectly with physics body to prevent 1-frame lag (ghosting)
+        this.events.on('postupdate', () => {
+            if (this.player && this.nameText) {
+                this.nameText.setPosition(Math.round(this.player.x), Math.round(this.player.y) - 40);
+            }
+        });
+
+        // HUD setup
+        this.createHUD();
+    }
+
+    createHUD() {
+        const padding = 20;
+        this.hudBg = this.add.rectangle(padding, padding, 250, 110, 0x000000, 0.6)
+            .setOrigin(0, 0).setScrollFactor(0);
+        this.hudMapText = this.add.text(padding + 10, padding + 10, `Map: ${this.currentMap}`, {
+            fontSize: '24px', fill: '#00ffcc', fontStyle: 'bold'
+        }).setScrollFactor(0);
+        this.hudXText = this.add.text(padding + 10, padding + 45, 'X: 0', {
+            fontSize: '20px', fill: '#ffffff'
+        }).setScrollFactor(0);
+        this.hudYText = this.add.text(padding + 10, padding + 75, 'Y: 0', {
+            fontSize: '20px', fill: '#ffffff'
+        }).setScrollFactor(0);
+
+        // Initialize Hotbar Graphics
+        this.hotbarGraphics = this.add.graphics().setScrollFactor(0);
+        this.selectedSlotGraphics = this.add.graphics().setScrollFactor(0);
+        this.drawHotbar();
+    }
+
+    drawHotbar() {
+        this.hotbarGraphics.clear();
+        this.selectedSlotGraphics.clear();
+
+        const innerSize = 80; // Size of the dark inside
+        const border = 8;     // Grey border thickness
+        
+        const totalWidth = 9 * innerSize + 10 * border;
+        const totalHeight = innerSize + 2 * border;
+        const startX = (1080 - totalWidth) / 2;
+        const startY = 960 - totalHeight - 20;
+
+        // Black outline for the entire hotbar
+        this.hotbarGraphics.fillStyle(0x000000, 1);
+        this.hotbarGraphics.fillRect(startX - 4, startY - 4, totalWidth + 8, totalHeight + 8);
+
+        // Grey Background of entire hotbar (border color)
+        this.hotbarGraphics.fillStyle(0x8b8b8b, 0.9);
+        this.hotbarGraphics.fillRect(startX, startY, totalWidth, totalHeight);
+
+        // Inner slots
+        for (let i = 0; i < 9; i++) {
+            let x = startX + border + i * (innerSize + border);
+            let y = startY + border;
+            
+            // Inside of slot (dark grey)
+            this.hotbarGraphics.fillStyle(0x3b3b3b, 1);
+            this.hotbarGraphics.fillRect(x, y, innerSize, innerSize);
+            
+            // Thin inner shadow/black border for depth (top and left inside)
+            this.hotbarGraphics.fillStyle(0x111111, 0.8);
+            this.hotbarGraphics.fillRect(x, y, innerSize, 4); // Top
+            this.hotbarGraphics.fillRect(x, y, 4, innerSize); // Left
+        }
+        
+        // Draw selected slot highlight
+        let selX = startX + border + this.currentSlot * (innerSize + border);
+        let selY = startY + border;
+        
+        // Outer black border for selection
+        this.selectedSlotGraphics.lineStyle(12, 0x000000, 1);
+        this.selectedSlotGraphics.strokeRect(selX - 6, selY - 6, innerSize + 12, innerSize + 12);
+
+        // Thick white border slightly outside the inner bounds
+        this.selectedSlotGraphics.lineStyle(8, 0xffffff, 1); // Thicker outline
+        this.selectedSlotGraphics.strokeRect(selX - 4, selY - 4, innerSize + 8, innerSize + 8);
+    }
+
+    update() {
+        const speed = 300;
+        let vx = 0;
+        let vy = 0;
+
+        if (this.keys.w.isDown) vy = -speed;
+        if (this.keys.s.isDown) vy = speed;
+        if (this.keys.a.isDown) vx = -speed;
+        if (this.keys.d.isDown) vx = speed;
+
+        if (vx !== 0 && vy !== 0) {
+            vx *= 0.7071;
+            vy *= 0.7071;
+        }
+
+        this.player.setVelocity(vx, vy);
+
+        if (vx !== 0 || vy !== 0) {
+            this.player.anims.play('walk', true);
+            // Flip sprite depending on horizontal movement
+            if (vx < 0) this.player.setFlipX(true);
+            else if (vx > 0) this.player.setFlipX(false);
+        } else {
+            this.player.anims.play('idle', true);
+        }
+
+        this.hudXText.setText(`X: ${Math.round(this.player.x)}`);
+        this.hudYText.setText(`Y: ${Math.round(this.player.y)}`);
+    }
+}
